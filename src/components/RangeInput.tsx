@@ -1,3 +1,5 @@
+import NumberInput from "./NumberInput";
+
 type RangeInputProps = {
   variableName: string;
   min: number;
@@ -31,10 +33,10 @@ function RangeInput({
           >
             Min
           </label>
-          <input
+          <NumberInput
             id="range-min"
             value={min}
-            onChange={(e) => onMinChange(Number(e.target.value))}
+            onChange={onMinChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
@@ -46,10 +48,10 @@ function RangeInput({
           >
             Max
           </label>
-          <input
+          <NumberInput
             id="range-max"
             value={max}
-            onChange={(e) => onMaxChange(Number(e.target.value))}
+            onChange={onMaxChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
@@ -61,12 +63,10 @@ function RangeInput({
           >
             Step
           </label>
-          <input
+          <NumberInput
             id="range-step"
             value={step}
-            onChange={(e) => onStepChange(Number(e.target.value))}
-            min={0.01}
-            step={0.01}
+            onChange={onStepChange}
             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>

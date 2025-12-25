@@ -1,7 +1,8 @@
-import type { FunctionParameter } from "../functions";
+import type { MathFunction } from "../functions.registry";
+import NumberInput from "./NumberInput";
 
 type ParameterInputsProps = {
-  parameters: FunctionParameter[];
+  parameters: MathFunction["parameters"];
   excludeParameter: string;
   values: Record<string, number>;
   onValueChange: (paramName: string, value: number) => void;
@@ -32,12 +33,10 @@ function ParameterInputs({
             >
               {param.name}
             </label>
-            <input
+            <NumberInput
               id={`param-${param.name}`}
               value={values[param.name] ?? param.defaultValue}
-              onChange={(e) =>
-                onValueChange(param.name, Number(e.target.value))
-              }
+              onChange={(val) => onValueChange(param.name, val)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>

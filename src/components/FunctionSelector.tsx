@@ -1,4 +1,4 @@
-import type { MathFunction } from "../functions";
+import type { MathFunction } from "../functions.registry";
 
 type FunctionSelectorProps = {
   functions: MathFunction[];

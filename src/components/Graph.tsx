@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import type { MathFunction } from "../functions";
+import type { MathFunction } from "../functions.registry";
 
 type GraphProps = {
   mathFunction: MathFunction;
@@ -32,63 +32,91 @@ function Graph({
   step,
   staticParams,
 }: GraphProps) {
+  const [visibleOutputs, setVisibleOutputs] = useState<Record<string, boolean>>(
+    {},
+  );
+
   const dataPoints = useMemo(() => {
     const points: DataPoint[] = [];
     for (let x = rangeMin; x <= rangeMax; x += step) {
       const params = { ...staticParams, [variableParam]: x };
       const result = mathFunction.fn(params);
 
-      // Handle both single value and dual value outputs
+      const point: DataPoint = { [variableParam]: Number(x.toFixed(6)) };
+
       if (typeof result === "number") {
         if (isFinite(result)) {
-          points.push({
-            [variableParam]: Number(x.toFixed(6)),
-            y: Number(result.toFixed(6)),
-          });
+          point.y = Number(result.toFixed(6));
+          points.push(point);
         }
       } else if (result && typeof result === "object") {
-        // Dual output
-        if (isFinite(result.y1) && isFinite(result.y2)) {
-          points.push({
-            [variableParam]: Number(x.toFixed(6)),
-            y1: Number(result.y1.toFixed(6)),
-            y2: Number(result.y2.toFixed(6)),
-          });
+        // Dynamic multi-value output
+        const allFinite = Object.values(result).every((v) => isFinite(v));
+        if (allFinite) {
+          for (const [key, value] of Object.entries(result)) {
+            point[key] = Number(value.toFixed(6));
+          }
+          points.push(point);
         }
       }
     }
     return points;
   }, [mathFunction, variableParam, rangeMin, rangeMax, step, staticParams]);
 
-  const hasDualOutput = useMemo(() => {
-    return dataPoints.length > 0 && "y1" in dataPoints[0];
-  }, [dataPoints]);
+  const outputKeys = useMemo(() => {
+    if (dataPoints.length === 0) return [];
+    const firstPoint = dataPoints[0];
+    return Object.keys(firstPoint).filter((key) => key !== variableParam);
+  }, [dataPoints, variableParam]);
+
+  const hasMultipleOutputs = outputKeys.length > 1;
 
   const { minY, maxY } = useMemo(() => {
     if (dataPoints.length === 0) return { minY: 0, maxY: 0 };
 
-    if (hasDualOutput) {
-      const y1Values = dataPoints.map((p) => p.y1 as number);
-      const y2Values = dataPoints.map((p) => p.y2 as number);
-      const allValues = [...y1Values, ...y2Values];
-      return {
-        minY: Math.min(...allValues),
-        maxY: Math.max(...allValues),
-      };
-    } else {
-      const yValues = dataPoints.map((p) => p.y as number);
-      return {
-        minY: Math.min(...yValues),
-        maxY: Math.max(...yValues),
-      };
-    }
-  }, [dataPoints, hasDualOutput]);
+    const allValues = dataPoints.flatMap((p) =>
+      outputKeys.map((key) => p[key] as number),
+    );
+
+    return {
+      minY: Math.min(...allValues),
+      maxY: Math.max(...allValues),
+    };
+  }, [dataPoints, outputKeys]);
+
+  // Initialize visibility state for each output key
+  useEffect(() => {
+    const initialVisibility = outputKeys.reduce((acc, key) => {
+      acc[key] = true; // Show all outputs by default
+      return acc;
+    }, {} as Record<string, boolean>);
+    setVisibleOutputs(initialVisibility);
+  }, [outputKeys]);
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">
         {mathFunction.name}
       </h3>
+
+      <div className="mb-4">
+        {outputKeys.map((key) => (
+          <label key={key} className="inline-flex items-center">
+            <input
+              type="checkbox"
+              checked={visibleOutputs[key]}
+              onChange={() => {
+                setVisibleOutputs((prev) => ({
+                  ...prev,
+                  [key]: !prev[key],
+                }));
+              }}
+              className="form-checkbox"
+            />
+            <span className="ml-2">{key}</span>
+          </label>
+        ))}
+      </div>
 
       <ResponsiveContainer width="100%" height={500}>
         <LineChart
@@ -112,7 +140,7 @@ function Graph({
             type="number"
             domain={["auto", "auto"]}
             label={{
-              value: hasDualOutput ? "values" : "y",
+              value: hasMultipleOutputs ? "values" : "y",
               angle: -90,
               position: "insideLeft",
               style: { fontWeight: 600 },
@@ -129,11 +157,7 @@ function Graph({
               if (value === undefined)
                 return ["N/A", name || mathFunction.name];
               const label =
-                name === "y1"
-                  ? mathFunction.outputLabels?.y1 || "y1"
-                  : name === "y2"
-                  ? mathFunction.outputLabels?.y2 || "y2"
-                  : mathFunction.name;
+                name === "y" ? mathFunction.name : name || mathFunction.name;
               return [value.toFixed(4), label];
             }}
             labelFormatter={(label: number) =>
@@ -141,26 +165,31 @@ function Graph({
             }
           />
           <Legend wrapperStyle={{ paddingTop: "20px" }} />
-          {hasDualOutput ? (
+          {hasMultipleOutputs ? (
             <>
-              <Line
-                type="monotone"
-                dataKey="y1"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
-                name={mathFunction.outputLabels?.y1 || "y1"}
-                isAnimationActive={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="y2"
-                stroke="#ef4444"
-                strokeWidth={2}
-                dot={false}
-                name={mathFunction.outputLabels?.y2 || "y2"}
-                isAnimationActive={false}
-              />
+              {outputKeys.map((key, index) => {
+                const colors = [
+                  "#3b82f6",
+                  "#ef4444",
+                  "#10b981",
+                  "#f59e0b",
+                  "#8b5cf6",
+                ];
+                return (
+                  visibleOutputs[key] && (
+                    <Line
+                      key={key}
+                      type="monotone"
+                      dataKey={key}
+                      stroke={colors[index % colors.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      name={key}
+                      isAnimationActive={false}
+                    />
+                  )
+                );
+              })}
             </>
           ) : (
             <Line

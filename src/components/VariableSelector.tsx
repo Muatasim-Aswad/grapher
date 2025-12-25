@@ -1,7 +1,7 @@
-import type { FunctionParameter } from "../functions";
+import type { MathFunction } from "../functions.registry";
 
 type VariableSelectorProps = {
-  parameters: FunctionParameter[];
+  parameters: MathFunction["parameters"];
   selectedVariable: string;
   onSelectVariable: (parameterName: string) => void;
 };
