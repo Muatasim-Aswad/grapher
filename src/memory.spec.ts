@@ -3,67 +3,92 @@ import {
   getNewStrengthAndDifficultyWithDefaults,
   getForgetProbability,
   type MemoryInternals,
+  MS_IN_DAY,
 } from "./memory";
 
-const runDaily = (args?: {
-  prevStrength?: number;
-  prevDifficulty?: number;
-  runs?: number;
-  startDay?: number;
-  length?: number;
-  answerTime?: number;
-  answerScore?: number;
-}) => {
-  const params = {
-    prevStrength: 0,
-    prevDifficulty: 0,
-    runs: 5,
-    startDay: 0,
-    length: 10,
-    answerTime: 4000,
-    answerScore: 0,
-    ...args,
+// Interval generators for different run patterns
+type Config = number[] | number | ((index: number) => number); // function for custom transformations. e.g. (i) => i * 2
+
+function generateRuns(params: {
+  answerScores: AnswerScore | AnswerScore[] | ((index: number) => AnswerScore);
+  answerTimes: Config;
+  daysSinceLastReview: Config;
+  times?: number; // required only if all three are not arrays, otherwise inferred from any array length
+}): Runs {
+  const { answerScores, answerTimes, daysSinceLastReview, times } = params;
+
+  // Determine the length
+  let length = times;
+  if (Array.isArray(answerScores)) length = answerScores.length;
+  else if (Array.isArray(answerTimes)) length = answerTimes.length;
+  else if (Array.isArray(daysSinceLastReview))
+    length = daysSinceLastReview.length;
+
+  if (!length) {
+    throw new Error("Either provide times or at least one array parameter");
+  }
+
+  // Helper to convert Config to array
+  const toArray = (config: Config, len: number): number[] => {
+    if (Array.isArray(config)) return config;
+    if (typeof config === "function")
+      return Array.from({ length: len }, (_, i) => config(i));
+    return Array.from({ length: len }, () => config);
   };
 
-  const {
-    prevStrength,
-    prevDifficulty,
-    runs,
-    startDay,
-    length,
-    answerTime,
-    answerScore,
-  } = params;
+  const scoresArray = toArray(answerScores, length);
+  const timesArray = toArray(answerTimes, length);
+  const lastReviewArray = toArray(daysSinceLastReview, length);
+
+  return Array.from({ length }, (_, i) => ({
+    aScore: scoresArray[i],
+    aTime: timesArray[i],
+    lastReview: lastReviewArray[i],
+  }));
+}
+
+type Runs = {
+  aTime: number; // answer time in seconds
+  aScore: AnswerScore; // answer score
+  lastReview: number; // time since last review in days
+}[];
+
+const run = (params: {
+  info?: string;
+  prevStrength?: number;
+  prevDifficulty?: number;
+  wordLength?: number;
+  runs: Runs;
+}) => {
+  const prevStrength = params.prevStrength ?? 0;
+  const prevDifficulty = params.prevDifficulty ?? 0;
+  const length = params.wordLength ?? 10;
+  const runs = params.runs;
+
+  if (params.info)
+    console.log(`\n\n=== ${params.info} === (Word Length: ${length})`);
 
   let strength = prevStrength;
   let difficulty = prevDifficulty;
 
-  type ResultRow = {
-    day: number;
-    l: number;
-    anSC: number;
-    exT: number;
-    anT: number;
-    speedScore: number;
-    answerQuality: number;
-    newStrength: number;
-    newDifficulty: number;
-    dLastReview: number;
-    currentForgetProbability: number;
-  };
-  const results: ResultRow[] = [];
+  const results = [];
+  let currentDay = 0;
+  for (let i = 0; i < runs.length; i++) {
+    currentDay += runs[i].lastReview;
+    const daysSinceLastReview = runs[i].lastReview;
+    const timeSinceLastReview = daysSinceLastReview * MS_IN_DAY;
 
-  for (let i = 0; i < runs; i++) {
-    const timeSinceLastReview = (startDay + i) * 24 * 69 * 60 * 1000;
+    // Get values for this iteration - either from array or use single value
+    const currentAnswerTime = runs[i].aTime;
+    const currentAnswerScore = runs[i].aScore;
 
     // function that takes internals merge them into the result and push to results
     function transformAndPush(internals: MemoryInternals) {
       results.push({
-        day: startDay + i,
-        l: length,
-        anSC: answerScore,
+        day: Number(currentDay.toFixed(2)),
+        anSC: currentAnswerScore,
+        anT: currentAnswerTime,
         exT: internals.expectedAnswerTime,
-        anT: answerTime,
         speedScore: internals.speedScore,
         answerQuality: internals.answerQuality,
         newStrength: internals.newStrength,
@@ -75,8 +100,8 @@ const runDaily = (args?: {
 
     const result = getNewStrengthAndDifficultyWithDefaults(
       {
-        answerScore,
-        answerTime,
+        answerScore: currentAnswerScore,
+        answerTime: currentAnswerTime,
         itemLength: length,
         strength,
         msSinceLastReview: timeSinceLastReview,
@@ -88,14 +113,12 @@ const runDaily = (args?: {
     difficulty = result.newDifficulty;
   }
 
-  console.log(`\n\n`);
-
   console.table(results);
 
   // Get forgettability after 1, 7, 14, 30, 90, 180, 360 days
   console.log("Forgettability over time since last review:");
-  const intervals = [1, 7, 14, 30, 90, 180, 360];
-  intervals.forEach((days) => {
+  const forgettabilityIntervals = [1, 7, 14, 30, 90, 180, 360];
+  forgettabilityIntervals.forEach((days) => {
     const strength = results[results.length - 1].newStrength;
     const difficulty = results[results.length - 1].newDifficulty;
 
@@ -107,203 +130,56 @@ const runDaily = (args?: {
     console.log(`  After ${days} days: ${result}.`);
   });
 
-  return { strength, difficulty, nextDay: startDay + runs };
+  return { strength, difficulty };
 };
 
 const repetitive = () => {
-  const first = runDaily();
-  const second = runDaily({
-    prevStrength: first.strength,
-    prevDifficulty: first.difficulty,
-    startDay: first.nextDay,
-    answerScore: 0.2,
-  });
-  const third = runDaily({
-    prevStrength: second.strength,
-    prevDifficulty: second.difficulty,
-    startDay: second.nextDay,
-    answerScore: 0.5,
-  });
-
-  const fourth = runDaily({
-    prevStrength: third.strength,
-    prevDifficulty: third.difficulty,
-    startDay: third.nextDay,
-    answerScore: 1,
-    answerTime: 8000,
-  });
-
-  const fifth = runDaily({
-    prevStrength: fourth.strength,
-    prevDifficulty: fourth.difficulty,
-    startDay: fourth.nextDay,
-    answerScore: 1,
-    answerTime: 4000,
-  });
-
-  const sixth = runDaily({
-    prevStrength: fifth.strength,
-    prevDifficulty: fifth.difficulty,
-    startDay: fifth.nextDay,
-    answerScore: 1,
-    answerTime: 2000,
-  });
-
-  const seventh = runDaily({
-    prevStrength: sixth.strength,
-    prevDifficulty: sixth.difficulty,
-    startDay: sixth.nextDay,
-    answerScore: 1,
-    answerTime: 1000,
-  });
-
-  // eighth day
-  runDaily({
-    prevStrength: seventh.strength,
-    prevDifficulty: seventh.difficulty,
-    startDay: seventh.nextDay,
-    answerScore: 1,
-    answerTime: 500,
+  // Days 0-7: Progressive improvement from worst to best
+  const firstSet = run({
+    info: "Progressive improvement from worst to best",
+    runs: generateRuns({
+      answerScores: [0, 0.2, 0.5, 1, 0.5, 1, 1, 1.5],
+      answerTimes: [4000, 4000, 4000, 8000, 4000, 2000, 1000, 500],
+      daysSinceLastReview: 1,
+    }),
   });
 
   // Scenario 2: Starting with better performance and going down
-  console.log(
-    "\n\n\n\nScenario 2: Starting with better performance and going down\n\n",
-  );
-
-  const firstB = runDaily({
-    answerScore: 1,
-    answerTime: 500,
-  });
-
-  const secondB = runDaily({
-    prevStrength: firstB.strength,
-    prevDifficulty: firstB.difficulty,
-    startDay: firstB.nextDay,
-    answerScore: 1,
-    answerTime: 1000,
-  });
-
-  const thirdB = runDaily({
-    prevStrength: secondB.strength,
-    prevDifficulty: secondB.difficulty,
-    startDay: secondB.nextDay,
-    answerScore: 0.5,
-    answerTime: 4000,
-  });
-
-  const fourthB = runDaily({
-    prevStrength: thirdB.strength,
-    prevDifficulty: thirdB.difficulty,
-    startDay: thirdB.nextDay,
-    answerScore: 0.2,
-    answerTime: 6000,
-  });
-
-  // fifth day
-  runDaily({
-    prevStrength: fourthB.strength,
-    prevDifficulty: fourthB.difficulty,
-    startDay: fourthB.nextDay,
-    answerScore: 0,
-    answerTime: 8000,
+  run({
+    info: "Declining performance from best to worst",
+    runs: generateRuns({
+      answerScores: [1.5, 1, 1, 0.5, 0.2, 0],
+      answerTimes: [500, 1000, 1000, 4000, 6000, 8000],
+      daysSinceLastReview: 1,
+    }),
   });
 };
 
 const scenario = () => {
-  // Realistic Scenario: Learning a programming concept over a week
-  console.log(
-    "\n\n\n\n=== Realistic Scenario: Learning a Programming Concept ===\n",
-  );
-
-  // Day 1: Initial attempt - needed multiple clues, slow response time
-  const day1 = runDaily({
-    answerScore: AnswerScore.CLUES,
-    answerTime: 8000,
-    runs: 1,
-  });
-  // reattempt later the same day - got it with a clue, moderate response time
-  const day1Reattempt = runDaily({
-    prevStrength: day1.strength,
-    prevDifficulty: day1.difficulty,
-    startDay: day1.nextDay - 0.5,
-    answerScore: AnswerScore.CLUE,
-    answerTime: 6000,
-    runs: 1,
-  });
-  // Day 2: Review - got it correctly, improved response time
-  const day2 = runDaily({
-    prevStrength: day1Reattempt.strength,
-    prevDifficulty: day1Reattempt.difficulty,
-    startDay: day1Reattempt.nextDay,
-    answerScore: AnswerScore.KNOW,
-    answerTime: 4000,
-    runs: 1,
-  });
-  // Day 4: Review after a gap - still correct, good response time
-  const day4 = runDaily({
-    prevStrength: day2.strength,
-    prevDifficulty: day2.difficulty,
-    startDay: 4,
-    answerScore: AnswerScore.KNOW,
-    answerTime: 3000,
-    runs: 1,
-  });
-  // Day 7: Final review - completely mastered, excellent response time
-  const day7 = runDaily({
-    prevStrength: day4.strength,
-    prevDifficulty: day4.difficulty,
-    startDay: 7,
-    answerScore: AnswerScore.VERY_KNOW,
-    answerTime: 1500,
-    runs: 1,
-  });
-
-  // Day 40: forgot
-  const day40 = runDaily({
-    prevStrength: day7.strength,
-    prevDifficulty: day7.difficulty,
-    startDay: 40,
-    answerScore: AnswerScore.NO,
-    answerTime: 9000,
-    runs: 1,
-  });
-
-  // the same day re-learn and answer fast correctly
-  const day40Relearn = runDaily({
-    prevStrength: day40.strength,
-    prevDifficulty: day40.difficulty,
-    startDay: 40,
-    answerScore: AnswerScore.KNOW,
-    answerTime: 2000,
-    runs: 1,
-  });
-
-  // Day 70: remember correctly but very slowly
-  const day70 = runDaily({
-    prevStrength: day40Relearn.strength,
-    prevDifficulty: day40Relearn.difficulty,
-    startDay: 70,
-    answerScore: AnswerScore.KNOW,
-    answerTime: 8000,
-    runs: 1,
-  });
-
-  // Day 100: perfect recall
-  runDaily({
-    prevStrength: day70.strength,
-    prevDifficulty: day70.difficulty,
-    startDay: 100,
-    answerScore: AnswerScore.VERY_KNOW,
-    answerTime: 1000,
-    runs: 1,
+  run({
+    info: "Realistic Scenario",
+    runs: generateRuns({
+      answerScores: [0.2, 0.5, 0.2, 0.2, 1.5, 0, 1.5, 1, 1.5],
+      daysSinceLastReview: [0, 0.5, 2, 4, 7, 40, 40.5, 70, 30],
+      answerTimes: [9000, 7000, 5000, 3000, 2000, 8000, 4000, 8000, 1000],
+    }),
   });
 };
 
 // log a separator
 
-console.log("\n\n\n" + "#".repeat(100) + "\n\n\n");
+console.log("#".repeat(100));
 
 repetitive();
 
 scenario();
+
+//Run 5 times with 0.1 day intervals
+run({
+  info: "Rapid reviews to solidify memory",
+  runs: generateRuns({
+    answerScores: 1,
+    answerTimes: [2000, 1500, 1000, 800, 500],
+    daysSinceLastReview: 0.1,
+  }),
+});

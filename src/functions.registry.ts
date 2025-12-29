@@ -29,6 +29,7 @@ import {
   MIN_ANSWER_QUALITY,
   MAX_ANSWER_QUALITY,
 } from "./memory";
+import { getAllStreakBonuses, MIN_STREAK_THRESHOLD } from "./memory1.ts";
 
 export const argsRegistry = {
   itemLength: {
@@ -131,6 +132,41 @@ export const argsRegistry = {
     defaultMin: 0,
     defaultMax: 1,
   },
+  streak: {
+    defaultValue: 5,
+    defaultMin: 0,
+    defaultMax: 15,
+  },
+  threshold: {
+    defaultValue: MIN_STREAK_THRESHOLD,
+    defaultMin: 0,
+    defaultMax: 10,
+  },
+  sensitivity: {
+    defaultValue: 0.5,
+    defaultMin: 0.1,
+    defaultMax: 2,
+  },
+  scale: {
+    defaultValue: 20,
+    defaultMin: 1,
+    defaultMax: 100,
+  },
+  strengthCap: {
+    defaultValue: 30,
+    defaultMin: 10,
+    defaultMax: 100,
+  },
+  optimalInterval: {
+    defaultValue: 100,
+    defaultMin: 10,
+    defaultMax: 365,
+  },
+  intervalWeight: {
+    defaultValue: 1,
+    defaultMin: 0,
+    defaultMax: 2,
+  },
 };
 
 export const availableFunctions: MathFunction[] = [
@@ -207,4 +243,52 @@ export const availableFunctions: MathFunction[] = [
     fn: getNewStrengthAndDifficulty,
     defaultVariableKey: "answerScore",
   }),
+  makeFunction({
+    name: "All Streak Bonuses",
+    paramKeys: [
+      "streak",
+      "threshold",
+      "sensitivity",
+      "scale",
+      "daysSinceLastReview",
+      "optimalInterval",
+      "intervalWeight",
+    ],
+    fn: getAllStreakBonuses,
+    defaultVariableKey: "streak",
+  }),
 ];
+
+function createUserSupabase() {
+  return {
+    error: "error",
+    data: {
+      id: "user123",
+    },
+  };
+}
+
+function createUserBackend() {
+  return {
+    error: "error",
+    data: null,
+  };
+}
+
+function deleteSupabaseUser(user: string | null) {
+  return {
+    error: "error",
+    data: null,
+  };
+}
+
+export function createUser() {
+  const sbResponse = createUserSupabase();
+  if (sbResponse.error) return "error";
+
+  const apiResponse = createUserBackend();
+  if (apiResponse.error) {
+    deleteSupabaseUser(sbResponse.data?.id);
+    return "error";
+  }
+}

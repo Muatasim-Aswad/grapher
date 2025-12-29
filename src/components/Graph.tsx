@@ -99,7 +99,7 @@ function Graph({
         {mathFunction.name}
       </h3>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-4">
         {outputKeys.map((key) => (
           <label key={key} className="inline-flex items-center">
             <input

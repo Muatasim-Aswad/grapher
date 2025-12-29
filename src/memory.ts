@@ -86,14 +86,6 @@ export function getSpeedScore(params: {
 
   const positiveScore = clamp({ x: rawScore, min: MIN_SPEED_SCORE }); // only positive scores
 
-  console.log(`Multiplier: ${expectedSpeedMultiplier}`);
-  console.log(
-    `Expected Time: ${expectedTime}, Answer Time: ${answerTime}, Speed Ratio: ${speedRatio}, Raw Score: ${rawScore}, Positive Score: ${positiveScore}, bounded Score: ${boundedRescaleTanh(
-      positiveScore,
-      0.5,
-    )}`,
-  );
-
   return boundedRescaleTanh(positiveScore, 0.5);
 }
 
@@ -109,6 +101,7 @@ export function getAnswerQuality(params: {
   speedWeight: number;
 }): number {
   const { answerScore, speedScore, speedWeight } = params;
+
   const answerQuality = answerScore + speedWeight * speedScore;
 
   return clamp({
@@ -141,7 +134,7 @@ export function getStrength(params: {
   if (answerQuality === 0)
     return clamp({ x: currentStrength * 0.3, min: MIN_STRENGTH }); // forgetting penalty
 
-  // the original version: Sn = Sc * (1 + AQ * T / (Dc * Sc)), where the latter represent linear decay
+  // the original version: Sn = Sc * (1 + AQ * T / (Dc * Sc)), where the latter represents decay
   const newStrength =
     currentStrength + answerQuality * (daysSinceLastReview / currentDifficulty);
 
@@ -249,6 +242,14 @@ export const getNewStrengthAndDifficulty = (
   if (currentStrength <= 0) currentStrength = DEFAULT_STRENGTH; // coercing to default strength
   if (currentDifficulty <= 0) currentDifficulty = DEFAULT_DIFFICULTY; // coercing to default difficulty
 
+  // Return with the same values if this is an immediate review and not the first review
+  if (
+    daysSinceLastReview <= 0.11 &&
+    (currentStrength != DEFAULT_STRENGTH ||
+      currentDifficulty != DEFAULT_DIFFICULTY)
+  )
+    return returnFunction(0, 0, currentStrength, currentDifficulty);
+
   // Speed plays role only if the answer is completely correct
   const speedScore =
     answerScore >= 1
@@ -280,28 +281,37 @@ export const getNewStrengthAndDifficulty = (
     daysSinceLastReview,
   });
 
-  // record internals for debugging or analysis
-  if (reportCB) {
-    reportCB({
-      daysSinceLastReview,
-      currentForgetProbability: getForgetProbability({
-        strength: currentStrength,
-        difficulty: currentDifficulty,
+  function returnFunction(
+    speedScore: number,
+    answerQuality: number,
+    newStrength: number,
+    newDifficulty: number,
+  ) {
+    // record internals for debugging or analysis
+    if (reportCB) {
+      reportCB({
         daysSinceLastReview,
-      }),
-      expectedAnswerTime: reactionTime + charTime * itemLength,
-      answerTime,
-      speedScore,
-      answerScore,
-      answerQuality,
-      currentStrength,
-      newStrength,
-      currentDifficulty,
-      newDifficulty,
-    });
+        currentForgetProbability: getForgetProbability({
+          strength: currentStrength,
+          difficulty: currentDifficulty,
+          daysSinceLastReview,
+        }),
+        expectedAnswerTime: reactionTime + charTime * itemLength,
+        answerTime,
+        speedScore,
+        answerScore,
+        answerQuality,
+        currentStrength,
+        newStrength,
+        currentDifficulty,
+        newDifficulty,
+      });
+    }
+
+    return { newStrength, newDifficulty };
   }
 
-  return { newStrength, newDifficulty };
+  return returnFunction(speedScore, answerQuality, newStrength, newDifficulty);
 };
 
 export function getNewStrengthAndDifficultyWithDefaults(
