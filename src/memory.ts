@@ -244,7 +244,7 @@ export interface MemoryInternals {
   newStreak: number;
 }
 
-export const getNewStrengthAndDifficulty = (
+export const getNewState = (
   params: {
     answerScore: number;
     answerTime: number;
@@ -284,7 +284,6 @@ export const getNewStrengthAndDifficulty = (
   if (currentDifficulty <= 0) currentDifficulty = DEFAULT_DIFFICULTY; // coercing to default difficulty
 
   const newStreak = answerScore >= 1 ? currentStreak + 1 : 0;
-  let streakBonus = 0;
 
   // Return with the same values if this is an immediate review and not the first review
   if (
@@ -292,7 +291,14 @@ export const getNewStrengthAndDifficulty = (
     (currentStrength != DEFAULT_STRENGTH ||
       currentDifficulty != DEFAULT_DIFFICULTY)
   )
-    return returnFunction(0, 0, currentStrength, currentDifficulty);
+    return returnFunction(
+      0,
+      0,
+      0,
+      currentStrength,
+      currentDifficulty,
+      currentStreak,
+    );
 
   // Speed plays role only if the answer is completely correct
   const speedScore =
@@ -306,7 +312,7 @@ export const getNewStrengthAndDifficulty = (
         })
       : 0;
 
-  streakBonus =
+  const streakBonus =
     answerScore >= 1 && daysSinceLastReview >= 1
       ? getStreakBonus({ currentStreak, streakBonusThreshold })
       : 0;
@@ -334,9 +340,11 @@ export const getNewStrengthAndDifficulty = (
 
   function returnFunction(
     speedScore: number,
+    streakBonus: number,
     answerQuality: number,
     newStrength: number,
     newDifficulty: number,
+    newStreak: number,
   ) {
     // record internals for debugging or analysis
     if (reportCB) {
@@ -362,13 +370,20 @@ export const getNewStrengthAndDifficulty = (
       });
     }
 
-    return { newStrength, newDifficulty };
+    return { newStrength, newDifficulty, newStreak };
   }
 
-  return returnFunction(speedScore, answerQuality, newStrength, newDifficulty);
+  return returnFunction(
+    speedScore,
+    streakBonus,
+    answerQuality,
+    newStrength,
+    newDifficulty,
+    newStreak,
+  );
 };
 
-export function getNewStrengthAndDifficultyWithDefaults(
+export function getNewStateWithDefaults(
   params: {
     answerScore: number;
     answerTime: number;
@@ -390,7 +405,7 @@ export function getNewStrengthAndDifficultyWithDefaults(
     streak,
   } = params;
 
-  return getNewStrengthAndDifficulty(
+  return getNewState(
     {
       answerScore,
       answerTime,

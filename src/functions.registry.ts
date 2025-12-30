@@ -7,10 +7,11 @@ import {
 export type { FunctionParameter, MathFunction };
 import {
   getSpeedScore,
+  getStreakBonus,
   getAnswerQuality,
   getStrength,
   getDifficulty,
-  getNewStrengthAndDifficulty,
+  getNewState,
   getForgetProbability,
   getForgettabilityTest,
   CHAR_REACTION_TIME,
@@ -22,14 +23,15 @@ import {
   MIN_DIFFICULTY,
   DIFFICULTY_CORRECTION_WEIGHT,
   ANSWER_SPEED_WEIGHT,
+  STREAK_BONUS_WEIGHT,
   AnswerScore,
   MIN_SPEED_SCORE,
   MAX_SPEED_SCORE,
   MAX_DIFFICULTY,
   MIN_ANSWER_QUALITY,
   MAX_ANSWER_QUALITY,
+  MIN_STREAK_THRESHOLD,
 } from "./memory";
-import { getAllStreakBonuses, MIN_STREAK_THRESHOLD } from "./memory1.ts";
 
 export const argsRegistry = {
   itemLength: {
@@ -71,6 +73,16 @@ export const argsRegistry = {
     defaultValue: 1,
     defaultMin: MIN_SPEED_SCORE,
     defaultMax: MAX_SPEED_SCORE,
+  },
+  bonus: {
+    defaultValue: 0,
+    defaultMin: 0,
+    defaultMax: 1,
+  },
+  bonusWeight: {
+    defaultValue: STREAK_BONUS_WEIGHT,
+    defaultMin: 0,
+    defaultMax: 1,
   },
   timeSinceLastReview: {
     defaultValue: 3 * MS_IN_DAY,
@@ -142,31 +154,6 @@ export const argsRegistry = {
     defaultMin: 0,
     defaultMax: 10,
   },
-  sensitivity: {
-    defaultValue: 0.5,
-    defaultMin: 0.1,
-    defaultMax: 2,
-  },
-  scale: {
-    defaultValue: 20,
-    defaultMin: 1,
-    defaultMax: 100,
-  },
-  strengthCap: {
-    defaultValue: 30,
-    defaultMin: 10,
-    defaultMax: 100,
-  },
-  optimalInterval: {
-    defaultValue: 100,
-    defaultMin: 10,
-    defaultMax: 365,
-  },
-  intervalWeight: {
-    defaultValue: 1,
-    defaultMin: 0,
-    defaultMax: 2,
-  },
 };
 
 export const availableFunctions: MathFunction[] = [
@@ -184,7 +171,13 @@ export const availableFunctions: MathFunction[] = [
   }),
   makeFunction({
     name: "Answer Quality", // AQ = AS + (sw * SS)
-    paramKeys: ["answerScore", "speedScore", "speedWeight"],
+    paramKeys: [
+      "answerScore",
+      "speedScore",
+      "speedWeight",
+      "bonus",
+      "bonusWeight",
+    ],
     fn: getAnswerQuality,
     defaultVariableKey: "speedScore",
   }),
@@ -198,7 +191,7 @@ export const availableFunctions: MathFunction[] = [
     }) =>
       getForgetProbability({
         ...params,
-        daysSinceLastReview: params.timeSinceLastReview,
+        daysSinceLastReview: params.timeSinceLastReview / MS_IN_DAY,
       }),
     defaultVariableKey: "timeSinceLastReview",
   }),
@@ -226,7 +219,7 @@ export const availableFunctions: MathFunction[] = [
     defaultVariableKey: "answerQuality",
   }),
   makeFunction({
-    name: "New Strength & Difficulty",
+    name: "New State",
     paramKeys: [
       "answerScore",
       "answerTime",
@@ -239,22 +232,41 @@ export const availableFunctions: MathFunction[] = [
       "speedWeight",
       "correctionWeight",
       "expectedSpeedMultiplier",
+      "streak",
+      "threshold",
+      "bonusWeight",
     ],
-    fn: getNewStrengthAndDifficulty,
+    fn: (params: {
+      answerScore: number;
+      answerTime: number;
+      itemLength: number;
+      currentStrength: number;
+      daysSinceLastReview: number;
+      currentDifficulty: number;
+      reactionTime: number;
+      charTime: number;
+      speedWeight: number;
+      correctionWeight: number;
+      expectedSpeedMultiplier: number;
+      streak: number;
+      threshold: number;
+      bonusWeight: number;
+    }) =>
+      getNewState({
+        ...params,
+        currentStreak: params.streak,
+        streakBonusThreshold: params.threshold,
+      }),
     defaultVariableKey: "answerScore",
   }),
   makeFunction({
-    name: "All Streak Bonuses",
-    paramKeys: [
-      "streak",
-      "threshold",
-      "sensitivity",
-      "scale",
-      "daysSinceLastReview",
-      "optimalInterval",
-      "intervalWeight",
-    ],
-    fn: getAllStreakBonuses,
+    name: "Streak Bonus",
+    paramKeys: ["streak", "threshold"],
+    fn: (params: { streak: number; threshold: number }) =>
+      getStreakBonus({
+        currentStreak: params.streak,
+        streakBonusThreshold: params.threshold,
+      }),
     defaultVariableKey: "streak",
   }),
 ];

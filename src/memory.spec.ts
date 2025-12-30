@@ -1,6 +1,6 @@
 import {
   AnswerScore,
-  getNewStrengthAndDifficultyWithDefaults,
+  getNewStateWithDefaults,
   getForgetProbability,
   type MemoryInternals,
   MS_IN_DAY,
@@ -70,8 +70,9 @@ const run = (params: {
 
   let strength = prevStrength;
   let difficulty = prevDifficulty;
+  let streak = 0;
 
-  const results = [];
+  const results: Array<Record<string, number>> = [];
   let currentDay = 0;
   for (let i = 0; i < runs.length; i++) {
     currentDay += runs[i].lastReview;
@@ -93,12 +94,13 @@ const run = (params: {
         answerQuality: internals.answerQuality,
         newStrength: internals.newStrength,
         newDifficulty: internals.newDifficulty,
+        streak: internals.newStreak,
         dLastReview: internals.daysSinceLastReview,
         currentForgetProbability: internals.currentForgetProbability,
       });
     }
 
-    const result = getNewStrengthAndDifficultyWithDefaults(
+    const result = getNewStateWithDefaults(
       {
         answerScore: currentAnswerScore,
         answerTime: currentAnswerTime,
@@ -106,11 +108,13 @@ const run = (params: {
         strength,
         msSinceLastReview: timeSinceLastReview,
         difficulty,
+        streak,
       },
       transformAndPush,
     );
     strength = result.newStrength;
     difficulty = result.newDifficulty;
+    streak = result.newStreak;
   }
 
   console.table(results);
@@ -135,10 +139,10 @@ const run = (params: {
 
 const repetitive = () => {
   // Days 0-7: Progressive improvement from worst to best
-  const firstSet = run({
+  run({
     info: "Progressive improvement from worst to best",
     runs: generateRuns({
-      answerScores: [0, 0.2, 0.5, 1, 0.5, 1, 1, 1.5],
+      answerScores: [0, 0.2, 0.5, 1, 1, 1.5],
       answerTimes: [4000, 4000, 4000, 8000, 4000, 2000, 1000, 500],
       daysSinceLastReview: 1,
     }),
