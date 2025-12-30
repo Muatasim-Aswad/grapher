@@ -1,29 +1,37 @@
-// To interact with the model, use time in milliseconds
-// For defaults use DEFAULT constants or provide 0 and the model will coerce to defaults
-// Provided answer scores range from 0 (completely wrong) to 1.5 (perfectly correct) see AnswerScore enum
-// The model uses down clamping to avoid math errors
-// We try to avoid up clamping to keep the model sensitive to the changes as much as possible
+// API notes:
+// - Review times (`answerTime`, `reactionTime`, `charTime`) are in milliseconds.
+// - Review spacing is expressed in days (`daysSinceLastReview`) or milliseconds (`msSinceLastReview` in the default wrapper).
+// - Pass `0`/`undefined` for strength/difficulty to coerce to defaults.
+// - `AnswerScore` ranges from `0` (wrong) to `1.5` (perfect recall).
+// - Clamp only where needed to keep the math stable without washing out signal.
 
 /**
- * * - A memory model is limited mainly in two ways: limited observability of the actual memory, limited observability of the user interactions with the item outside of it.
- * * - The model tries to handle that by capturing all possible signals, and using indirect measurements to estimate the unobservable properties.
- * * - Adaptiveness is achieved by using mathematical models that mimic the real-world behavior of memory as closely as possible.
- * * and by implementing different pathways for different signals.
+ * Memory model overview
  *
- * The model keeps track of: strength, difficulty, time since last review
- * The end result is the ability to predict forgettability to prioritize which items need review first
+ * A memory model is limited mainly in two ways:
+ * - Limited observability of the user's actual memory state.
+ * - Limited observability of interactions with the item outside the system.
  *
- * * Answer Quality = f(Answer Score, Answer Time, Length)
- * In answer quality we aim to incorporate memory signals such as correctness and speed of recall
- * Speed is also dependent on some item-intrinsic properties that we can directly measure such as length
+ * The model addresses this by capturing as many review-time signals as possible and using
+ * indirect measurements to estimate unobservable properties.
  *
- * * Difficulty = f(Current Difficulty, Answer Quality)
- * Since item has intrinsic properties that we cannot measure directly, we use difficulty as a rough estimate for that
+ * State tracked per item:
+ * - `strength` (days): how long the item is expected to be retained.
+ * - `difficulty` (unitless): proxy for item-intrinsic hardness.
+ * - `currentStreak`: consecutive fully-correct recalls.
  *
- * * Strength = f(Current Strength, Current Difficulty, Forgettability, Answer Quality)
- * Strength represents how well the item is encoded in memory in days.
- * While difficulty always contributes negatively to strength growth, forgettability can contribute positively if the answer is totally correct.
- * This allows us to adapt to the fact that a user remembered an item well despite its high forgettability.
+ * Primary outputs:
+ * - Forget probability (aka "forgettability") for prioritization.
+ * - Updated `strength` and `difficulty` after a review.
+ *
+ * Signals from a review:
+ * - `answerScore` (correctness/recall quality; see `AnswerScore`)
+ * - `answerTime` (ms), adjusted for item length
+ *
+ * Derived signals:
+ * - `speedScore`: rewards unusually fast correct answers after normalizing for length.
+ * - `streakBonus`: rewards sustained performance (only for correct answers and with >= 1 day spacing).
+ * - `answerQuality`: combined signal used to update `strength` and `difficulty`.
  */
 
 // util constants
@@ -49,6 +57,11 @@ export const MAX_ANSWER_QUALITY = 2;
 
 export const MIN_SPEED_SCORE = 0;
 export const MAX_SPEED_SCORE = 1;
+
+export const MIN_STREAK_THRESHOLD = 1; // minimum streak to start getting bonus
+export const STREAK_BONUS_WEIGHT = 0.2;
+export const MIN_STREAK_BONUS = 0;
+export const MAX_STREAK_BONUS = 1;
 
 /**
  * SS = (kET/AT) - 1
@@ -90,19 +103,40 @@ export function getSpeedScore(params: {
 }
 
 /**
- * AQ = AS + (sw * SS)
+ * SB = tanh(k * (streak - threshold))
+ * k = sensitivity (default 0.4)
+ */
+export function getStreakBonus(params: {
+  currentStreak: number;
+  streakBonusThreshold: number;
+}): number {
+  const { currentStreak, streakBonusThreshold } = params;
+
+  if (currentStreak < streakBonusThreshold) return 0;
+  const adjustedStreak = currentStreak - streakBonusThreshold; // positive
+
+  return boundedRescaleTanh(adjustedStreak, 0.4);
+}
+
+/**
+ * AQ = AS + (sw * SS) + (bw * SB)
  * where
  * AQ = Answer Quality
  * AS = Answer Score
+ * SS = Speed Score
+ * SB = Streak Bonus
  */
 export function getAnswerQuality(params: {
   answerScore: number;
   speedScore: number;
   speedWeight: number;
+  bonus: number;
+  bonusWeight: number;
 }): number {
-  const { answerScore, speedScore, speedWeight } = params;
+  const { answerScore, speedScore, speedWeight, bonus, bonusWeight } = params;
 
-  const answerQuality = answerScore + speedWeight * speedScore;
+  const answerQuality =
+    answerScore + speedWeight * speedScore + bonusWeight * bonus;
 
   return clamp({
     x: answerQuality,
@@ -112,11 +146,10 @@ export function getAnswerQuality(params: {
 }
 
 /**
- * NS = OS * SM
- * where
- * NS = New Strength
- * OS = Old Strength
- * SM = Strength Modifier
+ * Updates strength (in days).
+ *
+ * - If `answerQuality === 0`, apply a forgetting penalty.
+ * - Otherwise, grow strength proportionally to spacing and inversely to difficulty.
  */
 export function getStrength(params: {
   answerQuality: number;
@@ -186,7 +219,6 @@ export const getForgetProbability = (params: {
   return forgetProbability;
 };
 
-// ignore ts error here
 export enum AnswerScore {
   VERY_KNOW = 1.5,
   KNOW = 1,
@@ -202,11 +234,14 @@ export interface MemoryInternals {
   answerTime: number;
   speedScore: number;
   answerScore: number;
+  streakBonus: number;
   answerQuality: number;
   currentStrength: number;
   newStrength: number;
   currentDifficulty: number;
   newDifficulty: number;
+  currentStreak: number;
+  newStreak: number;
 }
 
 export const getNewStrengthAndDifficulty = (
@@ -222,6 +257,9 @@ export const getNewStrengthAndDifficulty = (
     speedWeight: number;
     correctionWeight: number;
     expectedSpeedMultiplier: number;
+    currentStreak: number;
+    streakBonusThreshold: number;
+    bonusWeight: number;
   },
   reportCB?: (internals: MemoryInternals) => void,
 ) => {
@@ -235,12 +273,18 @@ export const getNewStrengthAndDifficulty = (
     correctionWeight,
     expectedSpeedMultiplier,
     daysSinceLastReview,
+    currentStreak,
+    streakBonusThreshold,
+    bonusWeight,
   } = params;
   let { currentStrength, currentDifficulty } = params;
 
   if (itemLength <= 0) throw new Error("Length must be greater than zero.");
   if (currentStrength <= 0) currentStrength = DEFAULT_STRENGTH; // coercing to default strength
   if (currentDifficulty <= 0) currentDifficulty = DEFAULT_DIFFICULTY; // coercing to default difficulty
+
+  const newStreak = answerScore >= 1 ? currentStreak + 1 : 0;
+  let streakBonus = 0;
 
   // Return with the same values if this is an immediate review and not the first review
   if (
@@ -262,10 +306,17 @@ export const getNewStrengthAndDifficulty = (
         })
       : 0;
 
+  streakBonus =
+    answerScore >= 1 && daysSinceLastReview >= 1
+      ? getStreakBonus({ currentStreak, streakBonusThreshold })
+      : 0;
+
   const answerQuality = getAnswerQuality({
     answerScore,
     speedScore,
     speedWeight,
+    bonus: streakBonus,
+    bonusWeight,
   });
 
   const newDifficulty = getDifficulty({
@@ -300,11 +351,14 @@ export const getNewStrengthAndDifficulty = (
         answerTime,
         speedScore,
         answerScore,
+        streakBonus,
         answerQuality,
         currentStrength,
         newStrength,
         currentDifficulty,
         newDifficulty,
+        currentStreak,
+        newStreak,
       });
     }
 
@@ -322,6 +376,7 @@ export function getNewStrengthAndDifficultyWithDefaults(
     strength: number;
     msSinceLastReview: number;
     difficulty: number;
+    streak: number;
   },
   reportCB?: (internals: MemoryInternals) => void,
 ) {
@@ -332,6 +387,7 @@ export function getNewStrengthAndDifficultyWithDefaults(
     strength,
     msSinceLastReview,
     difficulty,
+    streak,
   } = params;
 
   return getNewStrengthAndDifficulty(
@@ -347,6 +403,9 @@ export function getNewStrengthAndDifficultyWithDefaults(
       speedWeight: ANSWER_SPEED_WEIGHT,
       correctionWeight: DIFFICULTY_CORRECTION_WEIGHT,
       expectedSpeedMultiplier: EXPECTED_SPEED_MULTIPLIER,
+      currentStreak: streak,
+      streakBonusThreshold: MIN_STREAK_THRESHOLD,
+      bonusWeight: STREAK_BONUS_WEIGHT,
     },
     reportCB,
   );

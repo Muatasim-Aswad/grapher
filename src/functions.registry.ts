@@ -258,37 +258,3 @@ export const availableFunctions: MathFunction[] = [
     defaultVariableKey: "streak",
   }),
 ];
-
-function createUserSupabase() {
-  return {
-    error: "error",
-    data: {
-      id: "user123",
-    },
-  };
-}
-
-function createUserBackend() {
-  return {
-    error: "error",
-    data: null,
-  };
-}
-
-function deleteSupabaseUser(user: string | null) {
-  return {
-    error: "error",
-    data: null,
-  };
-}
-
-export function createUser() {
-  const sbResponse = createUserSupabase();
-  if (sbResponse.error) return "error";
-
-  const apiResponse = createUserBackend();
-  if (apiResponse.error) {
-    deleteSupabaseUser(sbResponse.data?.id);
-    return "error";
-  }
-}
