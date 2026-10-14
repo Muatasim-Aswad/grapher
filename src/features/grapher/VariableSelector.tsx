@@ -1,7 +1,8 @@
-import type { MathFunction } from "../functions.registry";
+import { copy } from './copy';
+import type { MathFunction } from './model';
 
 type VariableSelectorProps = {
-  parameters: MathFunction["parameters"];
+  parameters: MathFunction['parameters'];
   selectedVariable: string;
   onSelectVariable: (parameterName: string) => void;
 };
@@ -17,7 +18,7 @@ function VariableSelector({
         htmlFor="variable-select"
         className="block text-sm font-medium text-gray-700"
       >
-        Variable Parameter
+        {copy.selectVariable}
       </label>
       <select
         id="variable-select"
@@ -27,7 +28,7 @@ function VariableSelector({
       >
         {parameters.map((param) => (
           <option key={param.name} value={param.name}>
-            {param.name}
+            {copy.parameterLabel(param.name)}
           </option>
         ))}
       </select>

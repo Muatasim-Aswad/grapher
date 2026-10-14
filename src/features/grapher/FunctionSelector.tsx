@@ -1,7 +1,8 @@
-import type { MathFunction } from "../functions.registry";
+import { copy } from './copy';
+import type { MathFunction } from './model';
 
 type FunctionSelectorProps = {
-  functions: MathFunction[];
+  functions: readonly MathFunction[];
   selectedFunctionId: string;
   onSelectFunction: (functionId: string) => void;
 };
@@ -17,7 +18,7 @@ function FunctionSelector({
         htmlFor="function-select"
         className="block text-sm font-medium text-gray-700"
       >
-        Select Function
+        {copy.selectFunction}
       </label>
       <select
         id="function-select"
@@ -27,7 +28,7 @@ function FunctionSelector({
       >
         {functions.map((fn) => (
           <option key={fn.id} value={fn.id}>
-            {fn.name}
+            {copy.functionNames[fn.id]}
           </option>
         ))}
       </select>

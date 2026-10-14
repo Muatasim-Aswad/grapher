@@ -1,0 +1,15 @@
+[tools]
+node = "26.13.0"
+pnpm = "12.18.0"
+
+[tasks.setup]
+description = "Install locked dependencies and local Git hooks"
+run = ["pnpm install --frozen-lockfile", "node scripts/install-hooks.mjs"]
+
+[tasks.dev]
+description = "Start the local development server"
+run = "pnpm run dev"
+
+[tasks.verify]
+description = "Run the checks used locally and in CI"
+run = "pnpm run verify"

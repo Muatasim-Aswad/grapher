@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+*.local.md
+/docs/plans/
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +27,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Browser smoke-check artifacts
+.playwright-cli/

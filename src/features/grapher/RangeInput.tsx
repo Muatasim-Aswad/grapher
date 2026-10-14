@@ -1,13 +1,14 @@
-import NumberInput from "./NumberInput";
+import { copy } from './copy';
+import NumberInput from '../../shared/ui/NumberInput';
 
 type RangeInputProps = {
   variableName: string;
-  min: number;
-  max: number;
-  step: number;
-  onMinChange: (value: number) => void;
-  onMaxChange: (value: number) => void;
-  onStepChange: (value: number) => void;
+  min: number | null;
+  max: number | null;
+  step: number | null;
+  onMinChange: (value: number | null) => void;
+  onMaxChange: (value: number | null) => void;
+  onStepChange: (value: number | null) => void;
 };
 
 function RangeInput({
@@ -22,7 +23,7 @@ function RangeInput({
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-medium text-gray-700">
-        Range for {variableName}
+        {copy.rangeHeading(copy.parameterLabel(variableName))}
       </h3>
 
       <div className="grid grid-cols-3 gap-4">
@@ -31,7 +32,7 @@ function RangeInput({
             htmlFor="range-min"
             className="block text-xs font-medium text-gray-600"
           >
-            Min
+            {copy.min}
           </label>
           <NumberInput
             id="range-min"
@@ -46,7 +47,7 @@ function RangeInput({
             htmlFor="range-max"
             className="block text-xs font-medium text-gray-600"
           >
-            Max
+            {copy.max}
           </label>
           <NumberInput
             id="range-max"
@@ -61,7 +62,7 @@ function RangeInput({
             htmlFor="range-step"
             className="block text-xs font-medium text-gray-600"
           >
-            Step
+            {copy.step}
           </label>
           <NumberInput
             id="range-step"

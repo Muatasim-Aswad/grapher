@@ -46,7 +46,7 @@ export const ANSWER_SPEED_WEIGHT = 0.3;
 export const DIFFICULTY_CORRECTION_WEIGHT = 0.1;
 
 export const MIN_STRENGTH = 1; // in days
-export const DEFAULT_STRENGTH = MIN_STRENGTH;
+const DEFAULT_STRENGTH = MIN_STRENGTH;
 
 export const MIN_DIFFICULTY = 1;
 export const MAX_DIFFICULTY = 10;
@@ -60,8 +60,6 @@ export const MAX_SPEED_SCORE = 1;
 
 export const MIN_STREAK_THRESHOLD = 1; // minimum streak to start getting bonus
 export const STREAK_BONUS_WEIGHT = 0.2;
-export const MIN_STREAK_BONUS = 0;
-export const MAX_STREAK_BONUS = 1;
 
 /**
  * SS = (kET/AT) - 1
@@ -97,7 +95,7 @@ export function getSpeedScore(params: {
   const speedRatio = (expectedSpeedMultiplier * expectedTime) / answerTime;
   const rawScore = speedRatio - 1;
 
-  const positiveScore = clamp({ x: rawScore, min: MIN_SPEED_SCORE }); // only positive scores
+  const positiveScore = clamp({ x: rawScore, min: MIN_SPEED_SCORE });
 
   return boundedRescaleTanh(positiveScore, 0.5);
 }
@@ -113,7 +111,7 @@ export function getStreakBonus(params: {
   const { currentStreak, streakBonusThreshold } = params;
 
   if (currentStreak < streakBonusThreshold) return 0;
-  const adjustedStreak = currentStreak - streakBonusThreshold; // positive
+  const adjustedStreak = currentStreak - streakBonusThreshold;
 
   return boundedRescaleTanh(adjustedStreak, 0.4);
 }
@@ -167,7 +165,6 @@ export function getStrength(params: {
   if (answerQuality === 0)
     return clamp({ x: currentStrength * 0.3, min: MIN_STRENGTH }); // forgetting penalty
 
-  // the original version: Sn = Sc * (1 + AQ * T / (Dc * Sc)), where the latter represents decay
   const newStrength =
     currentStrength + answerQuality * (daysSinceLastReview / currentDifficulty);
 
@@ -192,7 +189,7 @@ export function getDifficulty(params: {
   const newDifficulty =
     currentDifficulty - correctionWeight * (answerQuality - 1);
 
-  return clamp({ x: newDifficulty, min: MIN_DIFFICULTY, max: MAX_DIFFICULTY }); // clamp to [MIN_DIFFICULTY, 10]
+  return clamp({ x: newDifficulty, min: MIN_DIFFICULTY, max: MAX_DIFFICULTY });
 }
 
 /**
@@ -204,12 +201,9 @@ export function getDifficulty(params: {
 export const getForgetProbability = (params: {
   strength: number;
   difficulty: number;
-  timeSinceLastReview?: number;
-  daysSinceLastReview?: number;
+  daysSinceLastReview: number;
 }) => {
-  const { strength, difficulty } = params;
-  const daysSinceLastReview =
-    params.daysSinceLastReview ?? params.timeSinceLastReview ?? 0;
+  const { strength, difficulty, daysSinceLastReview } = params;
 
   const decayExponent =
     (daysSinceLastReview * difficulty) / safeDenom(strength);
@@ -227,7 +221,7 @@ export enum AnswerScore {
   NO = 0,
 }
 
-export interface MemoryInternals {
+interface MemoryInternals {
   daysSinceLastReview: number;
   currentForgetProbability: number;
   expectedAnswerTime: number;
@@ -279,9 +273,9 @@ export const getNewState = (
   } = params;
   let { currentStrength, currentDifficulty } = params;
 
-  if (itemLength <= 0) throw new Error("Length must be greater than zero.");
-  if (currentStrength <= 0) currentStrength = DEFAULT_STRENGTH; // coercing to default strength
-  if (currentDifficulty <= 0) currentDifficulty = DEFAULT_DIFFICULTY; // coercing to default difficulty
+  if (itemLength <= 0) throw new Error('Length must be greater than zero.');
+  if (currentStrength <= 0) currentStrength = DEFAULT_STRENGTH;
+  if (currentDifficulty <= 0) currentDifficulty = DEFAULT_DIFFICULTY;
 
   const newStreak = answerScore >= 1 ? currentStreak + 1 : 0;
 
@@ -346,7 +340,6 @@ export const getNewState = (
     newDifficulty: number,
     newStreak: number,
   ) {
-    // record internals for debugging or analysis
     if (reportCB) {
       reportCB({
         daysSinceLastReview,
@@ -426,18 +419,11 @@ export function getNewStateWithDefaults(
   );
 }
 
-// ! UTILS
-// * --------------------------------------------------------------------------------
-
 /**
  * Clamp x to be within [min, max]
  * To clamp to only one side set min or max to undefined
  */
-export const clamp = (args: {
-  x: number;
-  min?: number;
-  max?: number;
-}): number => {
+const clamp = (args: { x: number; min?: number; max?: number }): number => {
   let result = args.x;
   if (args.min !== undefined) result = Math.max(args.min, args.x);
   if (args.max !== undefined) result = Math.min(args.max, result);
@@ -461,25 +447,12 @@ const boundedRescaleTanh = (x: number, k = 1, a = -1, b = 1) => {
   return m + r * Math.tanh(k * x);
 };
 
-export function boundedAsymmetricTanh(
-  x: number,
-  a: number,
-  b: number,
-  kPos = 1,
-  kNeg = 0.3,
-) {
-  const k = x >= 0 ? kPos : kNeg;
-  return boundedRescaleTanh(x, k, a, b);
-}
-
-// ! Unused models below - keep for reference
-// * --------------------------------------------------------------------------------
 /**
  * Log-overdue signal (unsaturated, slow growth)
  * signal = log1p(x)
  * (good for ranking/reward; monotonic in x)
  */
-export const getLogOverdueSignal = (params: {
+const getLogOverdueSignal = (params: {
   strength: number;
   difficulty: number;
   daysSinceLastReview: number;
@@ -495,7 +468,7 @@ export const getLogOverdueSignal = (params: {
  * G = exp(-1/x) = exp(-S/(T*D))
  * (flat near 0, slow approach to 1; keep only if you intentionally want this shape)
  */
-export const getReverseExponentCurve = (params: {
+const getReverseExponentCurve = (params: {
   strength: number;
   difficulty: number;
   daysSinceLastReview: number;

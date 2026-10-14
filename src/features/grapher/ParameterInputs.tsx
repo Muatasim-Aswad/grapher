@@ -1,11 +1,12 @@
-import type { MathFunction } from "../functions.registry";
-import NumberInput from "./NumberInput";
+import { copy } from './copy';
+import type { MathFunction } from './model';
+import NumberInput from '../../shared/ui/NumberInput';
 
 type ParameterInputsProps = {
-  parameters: MathFunction["parameters"];
+  parameters: MathFunction['parameters'];
   excludeParameter: string;
-  values: Record<string, number>;
-  onValueChange: (paramName: string, value: number) => void;
+  values: Record<string, number | null>;
+  onValueChange: (paramName: string, value: number | null) => void;
 };
 
 function ParameterInputs({
@@ -22,7 +23,9 @@ function ParameterInputs({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-medium text-gray-700">Static Parameters</h3>
+      <h3 className="text-sm font-medium text-gray-700">
+        {copy.staticParameters}
+      </h3>
 
       <div className="grid grid-cols-2 gap-4">
         {staticParams.map((param) => (
@@ -31,11 +34,15 @@ function ParameterInputs({
               htmlFor={`param-${param.name}`}
               className="block text-xs font-medium text-gray-600"
             >
-              {param.name}
+              {copy.parameterLabel(param.name)}
             </label>
             <NumberInput
               id={`param-${param.name}`}
-              value={values[param.name] ?? param.defaultValue}
+              value={
+                values[param.name] === undefined
+                  ? param.defaultValue
+                  : values[param.name]
+              }
               onChange={(val) => onValueChange(param.name, val)}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
